@@ -36,9 +36,9 @@ console.log     = function(d) { //
 
 
 
-var ein = function(){
+var some_feed = function(){
    
-    var URL = "https://www.einpresswire.com/partners/html/FaipybobFmM7kAex";
+    var URL = "some_feed_link";
     http.get(URL, response => {
         response.setEncoding("utf8");
         console.log(`status to the ${URL} is ${response.statusCode}`);
@@ -126,172 +126,6 @@ var ein = function(){
     });
 }
 
-var qns = function(){
-   var URL = "https://app.quantumnewswire.com/feed/rss";
-    http.get(URL, response => {
-        response.setEncoding("utf8");
-        console.log(`status to the ${URL} is ${response.statusCode}`);
-        var data = "";
-        response.on("data", function(body) {
-            data += body;
-        });
-        response.on("end", function(body) {
-            var allArr = [];
-            
-            data = unidecode(data);
-            parseString(data, function(err, result) {
-
-             
-                var arts = result.rss.channel[0].item!=null ? result.rss.channel[0].item.length : [];
-                if(arts<=0){
-                  console.log("nothing found for feed");
-                  return false;
-                }
-
-                for(var index=0;index<arts;index++){
-
-                    //********************** get UID
-                    var pUrl = result.rss.channel[0].item[index].guid[0];
-                    // IF its WordPress
-                    var uuid = result.rss.channel[0].item[index].id[0];
-                    
-
-                    //********************** get Description
-                    var desc = h2p(
-                        result.rss.channel[0].item[index].description[0].toString()
-                    );
-
-                    //********************** get Title
-                    var title = h2p(result.rss.channel[0].item[index].title[0].toString());
-                    //********************** get date
-                    var date = result.rss.channel[0].item[index].pubDate[0].toString();
-                    //********************** Logging
-                    console.log("\n ["+index+"/"+arts+"]:-------- TITLE: "+title+" ---------- \n");
-                    console.log("\n ["+index+"/"+arts+"]:-------- UUID: " + uuid + " ------ \n");
-                    //********************** DB UPSTER
-                     var query = {
-                                   "uid":uuid,
-                                   "title":title,
-                                   "description":desc,
-                                   "dated":date
-                               };
-                             
-                       allArr[index] = query;        
-               } 
-
-               (async function() {
-                  try {
-
-                    const client = await db.connect(dburl,{ useNewUrlParser: true });
-                    var dbo = client.db("Frankly");
-                    console.log("adding "+allArr.length+" records to DB");
-                    for(var queries = 0; queries<allArr.length;queries++){
-
-                        // console.log("Adding record "+ (parseInt(queries) + 1) +" of "+allArr.length);  
-                          dbo.collection("VDA").update(
-                            allArr[queries],
-                            allArr[queries],
-                            {upsert: true}),function (err, result) {
-                                if (err) throw err;
-                                // console.log(result);
-                            };  
-                      }
-                    client.close();
-                    console.log("Added to DB @ "+ new Date().toDateString());
-                  } catch(e) {
-                    console.error(e)
-                  }
-
-                })();
-            });
-        });
-    });
-}
-
-var przen = function(){
-  var URL = "https://przen.com/ftrss/frankly1632.xml";
-    http.get(URL, response => {
-        response.setEncoding("utf8");
-        console.log(`status to the ${URL} is ${response.statusCode}`);
-        var data = "";
-        response.on("data", function(body) {
-            data += body;
-        });
-        response.on("end", function(body) {
-            var allArr = [];
-            
-            data = unidecode(data);
-            parseString(data, function(err, result) {
-
-                
-                var arts = result.rss.channel[0].item!=null ? result.rss.channel[0].item.length : [];
-                if(arts<=0){
-                  console.log("nothing found for feed");
-                  return false;
-                }
-
-                // console.log(arts); return false;
-
-                for(var index=0;index<arts;index++){
-
-                    //********************** get UID
-                    var pUrl = result.rss.channel[0].item[index].guid[0];
-                    // IF its WordPress
-                    var uuid = result.rss.channel[0].item[index].guid[0].split("/pr/")[1];
-                    
-
-                    //********************** get Description
-                    var desc = h2p(
-                        result.rss.channel[0].item[index].description[0].toString()
-                    );
-
-                    //********************** get Title
-                    var title = h2p(result.rss.channel[0].item[index].title[0].toString());
-                    //********************** get date
-                    var date = result.rss.channel[0].item[index].pubDate[0].toString();
-                    //********************** Logging
-                    console.log("\n ["+index+"/"+arts+"]:-------- TITLE: "+title+" ---------- \n");
-                    console.log("\n ["+index+"/"+arts+"]:-------- UUID: " + uuid + " ------ \n");
-                    //********************** DB UPSTER
-                     var query = {
-                                   "uid":uuid,
-                                   "title":title,
-                                   "description":desc,
-                                   "dated":date
-                               };
-                       // console.log(query);
-                       allArr[index] = query;        
-               } 
-
-               (async function() {
-                  try {
-
-                    const client = await db.connect(dburl,{ useNewUrlParser: true });
-                    var dbo = client.db("Frankly");
-                    console.log("adding "+allArr.length+" records to DB");
-                    for(var queries = 0; queries<allArr.length;queries++){
-
-                        // console.log("Adding record "+ (parseInt(queries) + 1) +" of "+allArr.length);  
-                          dbo.collection("VDA").update(
-                            allArr[queries],
-                            allArr[queries],
-                            {upsert: true}),function (err, result) {
-                                if (err) throw err;
-                                // console.log(result);
-                            };  
-                      }
-                    client.close();
-                    console.log("Added to DB @ "+ new Date().toDateString());
-                  } catch(e) {
-                    console.error(e)
-                  }
-
-                })();
-            });
-        });
-    });
-}
-
 
 /**
 * @file crond.js
@@ -303,7 +137,8 @@ var przen = function(){
 * crond.js is database cron job, which fetch feeds for several rss, parse and record it to database, the feeds are crawled in sequence using setInterval 
 */
 // przen();
-var options = [ein, qns, przen];
+var options = [some_feed];
+if(options.length>1){
 var index = 0;
 options[index](); // <-- init
 index++;
@@ -317,3 +152,8 @@ setInterval(function(){
       index = 0;
     }
 } ,((1000*60)*2.5));
+}else{
+  setInterval(function(){
+    options[0]();
+  },(1000*60)*2.5);
+}
