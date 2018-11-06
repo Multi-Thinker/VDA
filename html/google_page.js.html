@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: google_page.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: google_page.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/**
+* @file google_page.js
+* @name google_page.js
+* @author Talha habib
+* @module
+* google handler file
+*/
+
+/**
+* @file google_page.js
+* Exporting module to use as node plugin 
+* @function 
+* @param {Object} req - Request body
+* @param {Object} res - Request body
+* @returns {function} node module
+* @name module.export
+*/
+module.exports = (req,res) => {
+
+  var data        = req.body.result;
+  var source      = data.source;
+  var speech      = data.speech;
+  var action      = data.action;
+  var metadata    = data.metadata;
+  var intentName  = metadata.intentName;
+  var fulfillment = data.fulfillment;
+  var param       = data.parameters.any;
+  var attributes  = data.parameters.attributes!=null ? data.parameters.attributes : null;
+  var query       = data.resolvedQuery;
+  var db          = require("mongodb").MongoClient;
+  var dburl       = "mongodb://localhost:27017/";
+
+  var uuid        = count(attributes)>0 &amp;&amp; attributes.UID!=null ? attributes.UID : 0,
+   contact =  count(attributes)>0 &amp;&amp; attributes.contact!=null ? attributes.contact : false,
+   email = count(attributes)>0 &amp;&amp; attributes.email!=null ? attributes.email : [],
+   confirmed = count(attributes)>0 &amp;&amp; attributes.confirmed!=null ? attributes.confirmed : false,
+    arts = count(attributes)>0 &amp;&amp; attributes.art!=null ? attributes.art :  [], 
+   oldIndex = count(attributes)>0 &amp;&amp; attributes.index!=null ? attributes.index : 0,
+    lsearch = param, total = arts.length;
+
+  var response = '';
+  /**
+  * @file google_page.js
+  * Intend Switching, trigger ```functions``` according to the value 
+  * @function switch
+  * @param {string} intentName - conditional
+  * @returns {function} handling
+  */
+  switch(intentName){
+        case "Search":
+        console.log("searching");
+        searchinDB(lsearch,oldIndex);
+        break;
+      case "Controls":
+        switch(lsearch.toLowerCase()){
+          case "next":
+            specificDB("next");
+          break;
+          case "previous":
+            specificDB("previous");
+          break;
+          case "status":
+            specificDB("status");
+          break;
+          case 'else':
+            specificDB("status");
+          break;
+          default: 
+            say(source,"Sorry, i don't know that one, here are the available commands, Show next for next press release if available, show previous for previous, and show status to see how many press releases are there surrounding current release");
+        }
+       break;
+       case "email":
+        specificDB("email");
+       break;
+    default:
+      if(action!="input.welcome")
+      say(source,"There was an error");
+      else
+        say(source,`Welcome to Corporate News wire, You can search for press release like this for example: search for Computers`);
+  }
+
+
+/**
+* @file google_page.js
+  * Custom JSON Generator for Google Text to speech 
+  * @function say
+  * @param {string} source='default' - device gateway
+  * @param {string} str - text to speak
+  * @returns {JSON} V1 Google API
+  */
+function say(source='default',str=''){
+  oldIndex     = oldIndex&lt;0 ? 0 : oldIndex;
+  var tempSession =  {
+                                                      UID: 0, contact: [], email:false,
+                                                      confirmed: confirmed, art: arts, index:oldIndex,
+                                                      last_searched: lsearch, total:arts.length
+                                                    };
+
+  tempSession.UID     = uuid>0 ? uuid : 0;
+  tempSession.contact = (count(contact)>0 || contact==true) ? contact : [];
+  tempSession.email   = count(email)>0 ? email : false;
+
+  var session = [{
+  "name": "session",
+  "lifespan": 5,
+  "parameters": {
+    "attributes": tempSession,
+  }
+}];
+  var response = {"speech":str,
+  "source":source,
+  "contextOut":session};
+
+  res.end(JSON.stringify(response));
+}
+
+  /** 
+  * @file google_page.js
+  * Function to count array/object length 
+  * @function count
+  * @param {array} arr - count array 
+  * @returns {number} array count
+  */
+
+function count(arr=[]){
+  if(arr!=null){
+   return Object.keys(arr).length;
+  }
+  else{
+    return 0;
+  }
+}
+/**
+* @file google_page.js
+  * Function to search for specific ID or functionality other than searching a text in DB. This function contains show next, previous, status, and email commands. 
+  * @function specificDB
+  * @param {string} fn - type of function to perform
+  * @returns {JSON} V1 Google API
+  */
+function specificDB(fn){
+  var oid = oldIndex;
+  var ar  = arts;
+  var fun = fn;
+  
+  if(fn=="next"){
+    var totalArticle = parseInt(arts.length) - 1;
+    oldIndex     = oldIndex&lt;totalArticle ? oldIndex + 1 : oldIndex>totalArticle ? totalArticle : oldIndex;
+
+    var id       = arts[oldIndex];
+    var nextArt  = totalArticle - oldIndex;
+    nextArt      = nextArt&lt;0 ? 0 : nextArt;
+    var ifLast   = totalArticle+1==oldIndex ? true : false;
+    var pos      = "forward";
+
+    if(oldIndex - 1==totalArticle){
+      pos = "current";
+    }
+    var conmsg = '';
+    if(!ifLast){
+     
+      var oid = id;
+      conmsg = `There are  ${nextArt} press releases forward, displaying ${oldIndex +1} of ${totalArticle + 1} ..  \n`;
+    }else{
+      var oid     = oid>=0 
+                        ? oid-1&lt;0
+                          ? 0
+                          : oid-1
+                        : oid-1;
+      say(source,"There are no more press releases in forward queue regarding the search  "+lsearch+" \n You can say Show previous to listen to previous press release");
+    }
+  }
+  if(fn=="previous"){
+    var totalArticle = parseInt(arts.length) - 1;
+    oldIndex     = oldIndex>=0 
+                        ? oldIndex-1&lt;0
+                          ? 0
+                          : oldIndex-1
+                        : oldIndex-1;
+                          
+    var ifLast   = oldIndex>=0 ? true : false;
+    var id           = arts[oldIndex];
+    var oid = id;
+
+    console.log("---------------------------------");
+    console.log("current arts");
+    console.log(arts);
+    console.log("finding id "+oid);
+    console.log("total arts: "+totalArticle);
+    console.log("---------------------------------");
+
+    var pos = "previous";
+    if(oldIndex==0){
+      pos = "current";
+    }
+    if(ifLast){
+      conmsg = `There are ${oldIndex} press releases backward, displaying ${pos}... \n `;
+    }else{
+      say(source,"There are no more press releases in backward queue regarding the search "+lsearch+"\n You can say Show next to listen to next press release");
+    }
+  }
+  if(fn=="status"){
+    var totalArticle = parseInt(arts.length) - 1;
+    oldIndex         = parseInt(oldIndex);
+    var id           = arts[oldIndex];
+    var oid = id;
+    var backward = oldIndex; //oldIndex - 1&lt;1 ? 0 : oldIndex - 1;
+    var forward  = totalArticle - backward;
+    forward = forward&lt;0 ? 0 : forward;
+    var cons = contact;
+    var contacts = cons!=null 
+                    ? cons 
+                      : false;
+    var ifDoes   = contacts!=false ? "does" : "doesn't";
+    var line     = '';
+
+    if(ifDoes=="does"){
+       //line     = "say show contacts to get contacts information for keyword searched "+extract;
+       line = '';
+    }
+    conmsg  = `There are ${backward} press releases backward and 
+                     ${forward} forward this press release.
+                     ${line}`;
+    say(source, conmsg);
+    return false;                 
+  }
+
+  var s = source;
+  var ls = lsearch;
+  if(ls==''){
+    say(source, "You need to search for a press release first, Please say it like this, for example.. search for Computers");
+  }
+  if(fn=='email'){
+    oid = arts[oldIndex];
+    if(oid&lt;=0){
+      say(source,"You need to search for a press release first, Please ask me like this, for example: search for solar power");
+      return false;
+    }
+    if(!confirmed){
+      extract = lsearch.replace(/\sat\s/i,"@").replace(/\sdot\s/i,".").replace(/\s/igm,"");
+      email   = extract;
+      confirmed = true;
+      say(source, 'Please make sure that '+extract+' is correct email by saying, email is correct, otherwise say email is youremail@example.com to update');
+      return false;
+    }
+    if(confirmed){
+      extract = email;
+      if(lsearch.toLowerCase().replace(/\s/,'')!="correct"){
+        extract = lsearch.replace(/\sat\s/i,"@").replace(/\sdot\s/i,".").replace(/\s/igm,"");
+        email   = extract;
+        say(source, 'Please make sure that '+extract+' is correct email by saying, email is correct, otherwise say email is youremail@example.com to update');
+        return false;
+      }
+     
+    }
+  }
+   /**
+   * @file google_page.js
+  * @description Custom JSON Generator for Google Text to speech 
+  * @function specificDB.function
+  * @param {closure} any - get global or variable in scope
+  * @returns {JSON} V1 Google API
+  * @async
+  */
+  (async function() {
+    var extract = ls;
+    var source = s;
+    var id = oid;
+    var arts = ar;
+    var fn = fun;
+    var msg = conmsg;
+
+                  try {
+                        const client = await db.connect(dburl,{ useNewUrlParser: true });
+                        var dbo = client.db("Frankly");
+                        console.log("looking for id ", id);
+                        var result = dbo.collection("VDA").findOne({"uid":id},function(err,resst){
+                        if (err) throw err;
+                                var tt = resst!=null ? 
+                                                      Object.keys(resst).length>0 
+                                                        ? resst.hasOwnProperty("description")==true 
+                                                          ? true : null 
+                                                        : null
+                                                      : null;  
+
+                        if(tt==true){ 
+                          var reg = /((http|ftp|https):\/\/([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&amp;:/~+#-]*[\w@?^=%&amp;/~+#-])?)|(((?:(?:\+?([1-9]|[0-9][0-9]|[0-9][0-9][0-9])\s*(?:[.-]\s*)?)?(?:\(\s*([2-9]1[02-9]|[2-9][02-8]1|[2-9][02-8][02-9])\s*\)|([0-9][1-9]|[0-9]1[02-9]|[2-9][02-8]1|[2-9][02-8][02-9]))\s*(?:[.-]\s*)?)?([2-9]1[02-9]|[2-9][02-9]1|[2-9][02-9]{2})\s*(?:[.-]\s*)?([0-9]{4})(?:\s*(?:#|x\.?|ext\.?|extension)\s*(\d+))?))|(((?:[a-z0-9!#$%&amp;'*+=?^_`{|}~-]+(?:\.[a-z0-9!#$%&amp;'*+=?^_`{|}~-]+)*|"(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21\x23-\x5b\x5d-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])*")@(?:(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?|\[(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?|[a-z0-9-]*[a-z0-9]:(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21-\x5a\x53-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])+)\])))/gmi;
+                          var con = resst.description.match(reg);
+                          contact = con!=null ? con : false; 
+                          var currentArticle = resst.title+"\n"+resst.description.substr(0,195)+"...";
+                          uuid = resst.uid;
+                          total = arts.length;
+                          currentArticle = `${msg} ${currentArticle} \n You can move to other press release by saying 'Show next or previous' or see how many press releases are there around this search result by saying 'show status'`;
+                          if(fn=="email"){
+                              var currentArticle = resst.title+"\n"+resst.description;
+                              require("./sendmail.js")(email, currentArticle,(err,info)=>{
+                                console.log(err, info);
+                                var temail = email;
+                                if(err){
+                                   var currentArticle = "Please double check the email address, the email for press release with the title: '"+resst.title+"'' was not sent to email: "+temail;
+                                  say(source, currentArticle);
+                                 }else{
+                                  email = null;
+                                  confirmed = false;
+                                  say(source, "Email to "+temail+" for press release titled: '"+resst.title+"'' is sent");
+                                }
+                              });
+                              client.close();
+                              return false;
+                          }
+                          say(source,currentArticle);
+                          client.close();
+                }else{
+                        uuid= 0, contact = 0, email = null, confirmed = false;
+                        if(extract.toLowerCase()=="next" || extract.toLowerCase()=="previous"){
+                          extract = '';
+                        }
+                        var currentArticle = `Nothing Found for search ${extract}, You can try new search, for example by saying... search for solar power`;
+                        say(source,currentArticle);
+                }   
+          });
+         
+       } catch(e) {
+            console.log("error occured in searching in database", e);
+            var message = "There is a problem with search in database";
+            say('default', message);
+        }
+    })();
+}
+
+/**
+  * @file google_page.js
+  * Search in database for a string 
+  * @function searchinDB
+  * @param {string} extract - searched text
+  * @param {number} oldIndex - the index to get result for
+  * @returns {function} async database search
+  */
+function searchinDB(extract,oldIndex=0){
+  var s = source;
+
+  /**
+  * @file google_page.js
+  * Custom JSON Generator for Google Text to speech 
+  * @function searchinDB.function
+  * @param {closure} any - get global or variable in scope
+  * @returns {JSON} V1 Google API
+  */
+  (async function() {
+    var source = s;
+                  try {
+                        const client = await db.connect(dburl,{ useNewUrlParser: true });
+                        var dbo = client.db("Frankly");
+                        var result = dbo.collection("VDA").find({
+                              $text: { 
+                                $search: `/^${extract}$/igm`
+                              }
+                      }).sort({dated:-1})
+                      .toArray(function(err,resst){
+                        console.log(Object.keys(resst).length,` articles found in search for ${extract}`);
+                        if(resst!=null &amp;&amp; Object.keys(resst).length>0){ 
+                          totalArticle = Object.keys(resst).length;
+                          for(var i=0; i&lt;totalArticle;i++){
+                            arts[i] = resst[i].uid;
+                          }
+                          // if(extract!=lsearch){
+                            oldIndex = 0;
+                          // }
+                          var reg = /((http|ftp|https):\/\/([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&amp;:/~+#-]*[\w@?^=%&amp;/~+#-])?)|(((?:(?:\+?([1-9]|[0-9][0-9]|[0-9][0-9][0-9])\s*(?:[.-]\s*)?)?(?:\(\s*([2-9]1[02-9]|[2-9][02-8]1|[2-9][02-8][02-9])\s*\)|([0-9][1-9]|[0-9]1[02-9]|[2-9][02-8]1|[2-9][02-8][02-9]))\s*(?:[.-]\s*)?)?([2-9]1[02-9]|[2-9][02-9]1|[2-9][02-9]{2})\s*(?:[.-]\s*)?([0-9]{4})(?:\s*(?:#|x\.?|ext\.?|extension)\s*(\d+))?))|(((?:[a-z0-9!#$%&amp;'*+=?^_`{|}~-]+(?:\.[a-z0-9!#$%&amp;'*+=?^_`{|}~-]+)*|"(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21\x23-\x5b\x5d-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])*")@(?:(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?|\[(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?|[a-z0-9-]*[a-z0-9]:(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21-\x5a\x53-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])+)\])))/gmi;
+                          var con = resst[oldIndex].description.match(reg);
+                          contact = con!=null ? con : false; 
+                          var currentArticle = resst[oldIndex].title+"\n"+resst[oldIndex].description.substr(0,195)+"...\n";
+                          uuid = resst[oldIndex].uid;
+                          total = arts.length;
+                          currentArticle = `${currentArticle} \n You can move to other press release by saying 'Show next or previous' or see how many press releases are there around this search result by saying 'show status'`;
+                          say(source,currentArticle);
+                          client.close();
+                }else{
+                        uuid= 0, contact = 0, email = null, confirmed = false;
+                        var currentArticle = `Nothing Found for search ${extract}, You can try new search, for example by saying like this for example: Search for Computers `;
+                        say(source,currentArticle);
+                }   
+          });
+         
+       } catch(e) {
+            console.log("error occured in searching in database", e);
+            var message = "There is a problem with search in database";
+            say('default', message);
+        }
+    })();
+}
+
+
+};
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-Alexa%2520Database.html">Alexa Database</a></li><li><a href="module-Alexa%2520handler.html">Alexa handler</a></li><li><a href="module-Alexa%2520Responses.html">Alexa Responses</a></li><li><a href="module-google%2520handler%2520file.html">google handler file</a></li><li><a href="module-Interval-scheduled%2520Cron%2520for%2520Feed.html">Interval-scheduled Cron for Feed</a></li><li><a href="module-main%2520starting%2520script%2520of%2520VDA%2520project.html">main starting script of VDA project</a></li></ul><h3>Externals</h3><ul><li><a href="sendmail.external_js.html">sendmail.js</a></li></ul><h3>Global</h3><ul><li><a href="global.html#emailsender">email sender</a></li><li><a href="module-Alexa%2520handler.html">extracter</a></li><li><a href="global.html#ssl.js">ssl.js</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.5.5</a> on Mon Oct 22 2018 18:15:43 GMT+0500 (Pakistan Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>
